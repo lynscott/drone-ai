@@ -7,11 +7,16 @@ In this project, you will design a Deep Reinforcement Learning agent to control 
 
 # Table of Contents
 
+- [My Code](#mycode)
 - [Install](#install)
 - [Download](#download)
 - [Develop](#develop)
 - [Submit](#submit)
 
+# My Code
+In the [quad_controller_rl](https://github.com/elberman/RL-Quadcopter/tree/master/quad_controller_rl/src/quad_controller_rl) folder, you can find my DDPG Agents and Tasks for the project. In the [notebooks](https://github.com/elberman/RL-Quadcopter/tree/master/quad_controller_rl/notebooks) you can find the python notebook with my reflections and some selected reward/training graphs.
+
+I'd also like to give credit to Udacity and my mentor Leticia for their help in this project. I would not have been able to do it without them.
 
 # Install
 
