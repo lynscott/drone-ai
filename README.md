@@ -1,11 +1,9 @@
 # DeepRL Quadcopter Controller
 
-_Teach a Quadcopter How to Fly!_
+Implementation of quadcopter autonomy and human control for Dr. Moons research lab ME 499.
+Credit due to [elberman](https://github.com/elberman/RL-Quadcopter/) for the original source code.
 
-In this project, you will design a Deep Reinforcement Learning agent to control several quadcopter flying tasks, including take-off, hover and landing.
-
-
-# Table of Contents
+# Table of Contents TODO:Edit
 
 - [My Code](#mycode)
 - [Install](#install)
@@ -14,9 +12,7 @@ In this project, you will design a Deep Reinforcement Learning agent to control 
 - [Submit](#submit)
 
 # My Code
-In the [quad_controller_rl](https://github.com/elberman/RL-Quadcopter/tree/master/quad_controller_rl/src/quad_controller_rl) folder, you can find my DDPG Agents and Tasks for the project. In the [notebooks](https://github.com/elberman/RL-Quadcopter/tree/master/quad_controller_rl/notebooks) you can find the python notebook with my reflections and some selected reward/training graphs.
-
-I'd also like to give credit to Udacity and my mentor Leticia for their help in this project. I would not have been able to do it without them.
+In the [quad_controller_rl](https://github.com/elberman/RL-Quadcopter/tree/master/quad_controller_rl/src/quad_controller_rl) folder, you can find my DDPG Agents and Tasks for the project. In the [notebooks](https://github.com/elberman/RL-Quadcopter/tree/master/quad_controller_rl/notebooks) 
 
 # Install
 
@@ -165,17 +161,4 @@ Now you should be ready to start coding! Open the project notebook for further i
 ```bash
 $ jupyter notebook src/RL-Quadcopter/quad_controller_rl/notebooks/RL-Quadcopter.ipynb
 ```
-
-# Submit
-
-Complete the required sections in the notebook. Once done, save/export the notebook as a PDF or HTML file. This will serve as your project report.
-
-If you are enrolled in a Udacity Nanodegree program, you can submit your completed project for review. Prepare and upload a zip file that includes the following:
-
-- `RL-Quadcopter.ipynb`: Project notebook with all sections completed.
-- `RL-Quadcopter.pdf` / `RL-Quadcopter.html`: PDF or HTML report (which can be an export of the notebook).
-- `quad_controller_rl/`: Python package with your code in the following sub-packages:
-  - `tasks/`: Your implementation of each task required for this project.
-  - `agents/`: Agents you've implemented for the corresponding tasks.
-  - Any other supporting code or other files used by your project.
 
