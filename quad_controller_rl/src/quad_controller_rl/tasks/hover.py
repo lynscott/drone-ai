@@ -72,8 +72,9 @@ class Hover(BaseTask):
         error_velocity = np.linalg.norm(self.target_velocity - state[7:10])
         reward = - (self.position_weight * error_position + 
                     self.orientation_weight * error_orientation +
-                    self.velocity_weight * error_velocity)
-        
+                    self.velocity_weight * error_velocity -
+                    np.sum(position - self.target_position)*0.4)
+        # print(np.sum(position-self.target_position))
         if error_position > self.max_error_position:
             reward -= 50.0
             done = True

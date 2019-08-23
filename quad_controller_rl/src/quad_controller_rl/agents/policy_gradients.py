@@ -1,27 +1,37 @@
 import numpy as np
 import os
 import pandas as pd
+import tensorflow as tf
 
 from quad_controller_rl import util
 from quad_controller_rl.agents.base_agent import BaseAgent
 from quad_controller_rl.agents.utils import ReplayBuffer, OUNoise
 
-from keras import layers, models, optimizers
-from keras import backend as K
+from tensorflow.keras import layers, models, optimizers
+from tensorflow.keras import backend as K
+from tensorflow.keras.models import load_model, model_from_json
+from tensorflow.keras.layers import BatchNormalization, Dropout
 
 
 # Create DDPG Actor    
 class Actor:
     
-    def __init__(self, state_size, action_size, action_low, action_high):
+    def __init__(self, state_size, action_size, action_low, action_high, load=False):
         """Initialize Parameters and build model"""
         self.state_size = state_size  # integer - dimension of each state
         self.action_size = action_size  # integer - dimension of each action
         self.action_low = action_low  # array - min value of action dimension
         self.action_high = action_high  # array - max value of action dimension
         self.action_range = self.action_high - self.action_low
+        self.load_model = load
         
         self.build_model()
+
+    def func(self, x):
+        import tensorflow as tf
+        # shape = # scale factor shape
+        # scale_factor = np.random.normal(shape) * std + avg
+        return (x * self.action_range) + self.action_low
     
     def build_model(self):
         """Create actor network that maps states to actions"""
@@ -30,38 +40,80 @@ class Actor:
         states = layers.Input(shape=(self.state_size,), name='states')
         
         # Create hidden layers
+        # net = layers.Dense(units=32, activation='relu')(states)
+        # net = layers.Dense(units=64, activation='relu')(net)
+        # net = layers.Dense(units=32, activation='relu')(net)
+        kernel_initializer = tf.keras.initializers.VarianceScaling(scale=1.0, mode='fan_in', distribution='uniform', seed=None)
+
+        # Add hidden layers
         net = layers.Dense(units=32, activation='relu')(states)
+        # net = BatchNormalization()(net)
+        net = Dropout(0.2)(net)
         net = layers.Dense(units=64, activation='relu')(net)
+        # net = BatchNormalization()(net)
+        net = Dropout(0.2)(net)
         net = layers.Dense(units=32, activation='relu')(net)
+        # net = BatchNormalization()(net)
+        # net = Dropout(0.2)(net)
+
+
+        # final_layer_initializer = tf.keras.initializers.RandomUniform(minval=-0.003, maxval=0.003, seed=None)
         
+        # raw_actions = layers.Dense(units=self.action_size, activation='tanh', name='raw_actions', kernel_initializer=final_layer_initializer)(net)
+
+
         # Output layer with sigmoid
         raw_actions = layers.Dense(units=self.action_size, activation='sigmoid', name='raw_actions')(net)
         
         # Scale output for each action to appropriate ranges
-        actions = layers.Lambda(lambda x: (x * self.action_range) + self.action_low, name='actions')(raw_actions)
+        actions = layers.Lambda(self.func, name='actions')(raw_actions)
+
+        # Note that the raw actions produced by the output layer are in a [-1.0, 1.0] range 
+        # (using a 'tanh' activation function). So, we add another layer that scales each 
+        # output to the desired range for each action dimension, where the middle value of 
+        # the action range corresponds to the value in the middle of the tanh function, which 
+        # is 0. This produces a deterministic action for any given state vector.
+        # middle_value_of_action_range = self.action_low +self.action_range/2
+        # actions = layers.Lambda(lambda x: (x * self.action_range) + middle_value_of_action_range,
+        #     name='actions')(raw_actions)
         
         # Create model
-        self.model = models.Model(inputs=states, outputs=actions)
+        if self.load_model:
+            # load json and create model
+            # with open('/media/lyn/Samsung_T5/actor_model.h5', 'r') as json_file:
+            #     loaded_model_json = json_file.read()
+            #     print(loaded_model_json)
+            # json_file.close()
+            # self.model = model_from_json(loaded_model_json)
+            self.model = load_model('/media/lyn/Samsung_T5/actor_model.h5', custom_objects={"func": self.func})
+            model_json = self.model.to_json()
+            with open("/media/lyn/Samsung_T5/actor_model_json.json", "w") as json_file:
+                json_file.write(model_json)
+        else:        
+            self.model = models.Model(inputs=states, outputs=actions)
+            # Loss function using Q-val gradients
+            action_grads = layers.Input(shape=(self.action_size,))
+            loss = K.mean(-action_grads * actions)
+            
+            # Optimizer and Training Function
+            optimizer = optimizers.Adam()
+            updates_op = optimizer.get_updates(params=self.model.trainable_weights, loss=loss)
+            self.train_fn = K.function(inputs=[self.model.input, action_grads, K.learning_phase()], outputs=[], updates=updates_op)
+            
         
-        # Loss function using Q-val gradients
-        action_grads = layers.Input(shape=(self.action_size,))
-        loss = K.mean(-action_grads * actions)
         
-        # Optimizer and Training Function
-        optimizer = optimizers.Adam()
-        updates_op = optimizer.get_updates(params=self.model.trainable_weights, loss=loss)
-        self.train_fn = K.function(inputs=[self.model.input, action_grads, K.learning_phase()], outputs=[], updates=updates_op)
         
 
 # Create DDPG Critic
 class Critic:
     
-    def __init__(self, state_size, action_size):
+    def __init__(self, state_size, action_size, load=False):
         """Initialize parameters and model"""
         
         self.state_size = state_size  # integer - dim of states
         self.action_size = action_size  # integer - dim of action
-        
+        self.load_model = load
+
         self.build_model()
         
     def build_model(self):
@@ -70,36 +122,88 @@ class Critic:
         # Define inputs
         states = layers.Input(shape=(self.state_size,), name='states')
         actions = layers.Input(shape=(self.action_size,), name='actions')
-            
-        # Hidden layers for states
+
+
+        # Kernel initializer with fan-in mode and scale of 1.0
+        kernel_initializer = tf.keras.initializers.VarianceScaling(scale=1.0, mode='fan_in', distribution='uniform', seed=None)
+        # Kernel L2 loss regularizer with penalization param of 0.01
+        kernel_regularizer = tf.keras.regularizers.l2(0.01)
+
+
+        # Add hidden layer(s) for state pathway
         net_states = layers.Dense(units=32, activation='relu')(states)
+        # net_states = BatchNormalization()(net_states)
+        net_states = Dropout(0.2)(net_states)
         net_states = layers.Dense(units=64, activation='relu')(net_states)
-            
-        # Hidden layers for actions
+        # net_states = BatchNormalization()(net_states)
+        net_states = Dropout(0.2)(net_states)
+
+        # Add hidden layer(s) for action pathway
         net_actions = layers.Dense(units=32, activation='relu')(actions)
+        # net_actions = BatchNormalization()(net_actions)
+        net_actions = Dropout(0.2)(net_actions)
         net_actions = layers.Dense(units=64, activation='relu')(net_actions)
-            
+        # net_actions = BatchNormalization()(net_actions)
+        # net_actions = Dropout(0.2)(net_actions)
+
         # Combine state and action values
         net = layers.Add()([net_states, net_actions])
         net = layers.Activation('relu')(net)
+
+        # net = layers.Dense(units=64, activation='relu', kernel_initializer=kernel_initializer)(net)
             
-        # Output layer for Q-values
+        # Kernel initializer for final output layer: initialize final layer weights from 
+        # a uniform distribution of [-0.003, 0.003]
+        # final_layer_initializer = tf.keras.initializers.RandomUniform(minval=-0.003, maxval=0.003, seed=None)
+
+        # Q_values = layers.Dense(units=1, activation=None, name='q_values', kernel_initializer=final_layer_initializer, kernel_regularizer=kernel_regularizer)(net)
+
+
+        # DEPRECATED: Hidden layers for states
+        # net_states = layers.Dense(units=32, activation='relu')(states)
+        # net_states = layers.Dense(units=64, activation='relu')(net_states)
+            
+        # Hidden layers for actions
+        # net_actions = layers.Dense(units=32, activation='relu')(actions)
+        # net_actions = layers.Dense(units=64, activation='relu')(net_actions)
+            
+            
+        # Output layer for Q-values OLD
         Q_vals = layers.Dense(units=1, name='q_vals')(net)
             
         # Create model
-        self.model = models.Model(inputs=[states, actions], outputs=Q_vals)
-          
-        # Define Optimizer and compile
-        optimizer = optimizers.Adam()
-        self.model.compile(optimizer=optimizer, loss='mse')
-            
+        if self.load_model:
+            # load json and create model
+            # with open('/media/lyn/Samsung_T5/critic_model_json.json', 'r') as json_file:
+            #     loaded_model_json = json_file.read()
+            #     print(loaded_model_json)
+            #     json_file.close()
+            # self.model = model_from_json(loaded_model_json)
+            self.model = load_model('/media/lyn/Samsung_T5/critic_model.h5')
+            model_json = self.model.to_json()
+            with open("/media/lyn/Samsung_T5/critic_model_json.json", "w") as json_file:
+                json_file.write(model_json)
+            print('model loaded')
+        else:        
+            self.model = models.Model(inputs=[states, actions], outputs=Q_vals)
+            # Define Optimizer and compile
+            optimizer = optimizers.Adam()
+            self.model.compile(optimizer=optimizer, loss='mse')
+                
         # Compute Q' wrt actions
         action_grads = K.gradients(Q_vals, actions)
+        print(actions.shape)
+        for item in action_grads:
+            print(type(item))
             
         # Create function to get action grads
         self.get_action_gradients = K.function(
-            inputs=[*self.model.input, K.learning_phase()],
+            inputs=[self.model.input, K.learning_phase()],
             outputs=action_grads)
+        
+        
+          
+        
         
 
 class DDPG(BaseAgent):
@@ -107,7 +211,7 @@ class DDPG(BaseAgent):
     def __init__(self, task):
         
         self.task = task
-        
+        self.load = False
         # Constrain State and Action matrices
         self.state_size = 3
         self.action_size = 3
@@ -118,7 +222,7 @@ class DDPG(BaseAgent):
         # Score tracker and learning parameters
         self.best_w = None
         self.best_score = -np.inf
-        self.noise_scale = 0.1
+        self.noise_scale = 0.3
         
         # Save episode statistics for analysis
         self.stats_filename = os.path.join(util.get_param('out'), "stats_{}.csv".format(util.get_timestamp()))
@@ -129,16 +233,32 @@ class DDPG(BaseAgent):
         # Actor Model
         self.action_low = self.task.action_space.low[0:3]
         self.action_high = self.task.action_space.high[0:3]
-        self.actor_local = Actor(self.state_size, self.action_size, self.action_low, self.action_high)
+        
+        self.actor_local = Actor(self.state_size, self.action_size, self.action_low, self.action_high, True)
         self.actor_target = Actor(self.state_size, self.action_size, self.action_low, self.action_high)
         
         # Critic Model
-        self.critic_local = Critic(self.state_size, self.action_size)
+        self.critic_local = Critic(self.state_size, self.action_size, True)
         self.critic_target = Critic(self.state_size, self.action_size)
         
-        # Initialize model parameters with local parameters
+        if self.load:
+            # Initialize model parameters with local parameters
+            self.critic_local.model.load_weights('/media/lyn/Samsung_T5/critic_weightsV4.h5')
+            self.actor_local.model.load_weights('/media/lyn/Samsung_T5/actor_weightsV4.h5')
+            print('model loaded')
+
         self.critic_target.model.set_weights(self.critic_local.model.get_weights())
         self.actor_target.model.set_weights(self.actor_local.model.get_weights())
+
+        # if not self.load:
+        #     # Initialize model parameters with local parameters
+        #     self.critic_target.model.set_weights(self.critic_local.model.get_weights())
+        #     self.actor_target.model.set_weights(self.actor_local.model.get_weights())
+        #     print('model built')
+        # else:
+        #     self.critic_target.model.load_weights('/media/lyn/Samsung_T5/critic_weights.h5')
+        #     self.actor_target.model.load_weights('/media/lyn/Samsung_T5/actor_weights.h5')
+        #     print('model loaded')
         
         # Process noise
         self.noise = OUNoise(self.action_size)
@@ -159,7 +279,9 @@ class DDPG(BaseAgent):
         self.last_state = None
         self.last_action = None
         self.total_reward = 0.0
-        self.count = 0 
+        self.count = 0
+        # self.task.reset()
+        # self.noise.reset() 
         
     def step(self, state, reward, done):
         
@@ -169,6 +291,7 @@ class DDPG(BaseAgent):
         # Choose an action
         action = self.act(state)
         
+
         # Save experience and reward
         if self.last_state is not None and self.last_action is not None:
             self.memory.add(self.last_state, self.last_action, reward, state, done)
@@ -183,7 +306,19 @@ class DDPG(BaseAgent):
             # Write episode stats and reset
             self.write_stats([self.episode_num, self.total_reward])
             self.episode_num += 1
+            print(self.total_reward)
+
+
+            # if np.sum(action < 0.01):
+            #     print(action)
+            #     self.noise.reset()
+
+            # Save weights
+            if self.episode_num == 500 or self.episode_num == 1000 or self.episode_num == 3000:
+                self.save_model()
             self.reset_episode_vars()
+
+        
         
         
         self.last_state = state
@@ -196,7 +331,9 @@ class DDPG(BaseAgent):
         """Returns actions for a given state for current policy"""
         states = np.reshape(states, [-1, self.state_size])
         actions = self.actor_local.model.predict(states)
-        return actions + self.noise.sample()
+        new_action = actions + self.noise.sample()
+
+        return new_action
     
     def learn(self, experiences):
         """Update policy and value parameters given experiences"""
@@ -216,7 +353,9 @@ class DDPG(BaseAgent):
         self.critic_local.model.train_on_batch(x=[states, actions], y=Q_targets)
         
         # Train actor model
-        action_gradients = np.reshape(self.critic_local.get_action_gradients([states, actions, 0]), (-1, self.action_size))
+        print(states.shape, actions.shape)
+        test = self.critic_local.get_action_gradients([states, actions])
+        action_gradients = np.reshape(test, (-1, self.action_size))
         self.actor_local.train_fn([states, action_gradients, 1])
         
         # Soft-update target model
@@ -248,5 +387,11 @@ class DDPG(BaseAgent):
         complete_action[0:action_size] = action
         return complete_action
     
+    def save_model(self):
+        self.actor_target.model.save_weights('/media/lyn/Samsung_T5/actor_weightsV4.h5')
+        self.critic_target.model.save_weights('/media/lyn/Samsung_T5/critic_weightsV4.h5')
 
-    
+        self.critic_target.model.save('/media/lyn/Samsung_T5/critic_model.h5') 
+        self.actor_target.model.save('/media/lyn/Samsung_T5/actor_model.h5') 
+
+        print('Weights Saved. EP:', self.episode_num)

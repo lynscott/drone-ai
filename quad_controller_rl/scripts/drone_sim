@@ -3,7 +3,7 @@
 # Launch simulator
 me=`basename "$0"`
 echo `pwd`
-sim=${1:-DroneSim}  # default path to executable
+sim="/media/lyn/Samsung_T5/DroneSim/DroneSim_Lin.x86_64" #${1:-DroneSim}  # default path to executable
 if [[ -x ${sim} ]]
 then
 	echo "[$me] Starting simulator: $sim"

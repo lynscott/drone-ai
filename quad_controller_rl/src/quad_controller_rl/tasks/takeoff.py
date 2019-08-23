@@ -11,6 +11,7 @@ class Takeoff(BaseTask):
     def __init__(self):
         # State space: <position_x, .._y, .._z, orientation_x, .._y, .._z, .._w>
         cube_size = 300.0  # env is cube_size x cube_size x cube_size
+
         self.observation_space = spaces.Box(
             np.array([- cube_size / 2, - cube_size / 2,       0.0, -1.0, -1.0, -1.0, -1.0]),
             np.array([  cube_size / 2,   cube_size / 2, cube_size,  1.0,  1.0,  1.0,  1.0]))
@@ -31,7 +32,7 @@ class Takeoff(BaseTask):
     def reset(self):
         # Nothing to reset; just return initial condition
         return Pose(
-                position=Point(0.0, 0.0, np.random.normal(0.5, 0.1)),  # drop off from a slight random height
+                position=Point(0.0, 0.0, np.random.normal(0.5, 0.1)),  # drop off from a slight random height 
                 orientation=Quaternion(0.0, 0.0, 0.0, 0.0),
             ), Twist(
                 linear=Vector3(0.0, 0.0, 0.0),
@@ -45,17 +46,27 @@ class Takeoff(BaseTask):
                 pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w])
 
         # Compute reward / penalty and check if this episode is complete
-        done = False
-        reward = -min(abs(self.target_z - pose.position.z), 20.0)  # reward = zero for matching target z, -ve as you go farther, upto -20
+        done = False 
+        reward = -min(abs(self.target_z - pose.position.z), 20.0) #1 - .1*(np.sum(abs(pose.position.z - self.target_z)))**2 # #
+        # print(reward) 
+        # reward = zero for matching target z, -ve as you go farther, upto -20
         if pose.position.z >= self.target_z:  # agent has crossed the target height
-            reward += 10.0  # bonus reward
+            print(self.target_z - pose.position.z)
+            reward -= -abs(self.target_z - pose.position.z)#10.0  # bonus reward
+            print(reward)
             done = True
-        elif timestamp > self.max_duration:  # agent has run out of time
+
+        # if pose.position.z < self.target_z:
+        #     reward -= 10.0
+
+        if timestamp > self.max_duration:  # agent has run out of time
             reward -= 10.0  # extra penalty
             done = True
 
         # Take one RL step, passing in current state and reward, and obtain action
         # Note: The reward passed in here is the result of past action(s)
+        # if not done:
+        #     done = True
         action = self.agent.step(state, reward, done)  # note: action = <force; torque> vector
 
         # Convert to proper force command (a Wrench object) and return it

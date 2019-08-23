@@ -21,7 +21,7 @@ def get_subclass(cls, name):
     return types[name]
 
 class RLControllerNode:
-    def __init__(self, name='rl_controller', num_episodes=10000, update_rate=30, transient_period=0.1):
+    def __init__(self, name='rl_controller', num_episodes=3001, update_rate=30, transient_period=0.1):
         # Set ROS node and environment params, initialize node
         self.state = 'INIT'  # one of ['INIT', 'RESET', 'EPISODE']; to keep track of current state
         self.name = name  # to identify this ROS node
@@ -67,15 +67,20 @@ class RLControllerNode:
         rate = rospy.Rate(self.update_rate)  # update task periodically
         while not rospy.is_shutdown():
             rate.sleep()  # handle events, callbacks
+            # print('while loop')
 
             # Update task, get control action (force command) and whether this episode is done
             if self.timestamp and self.pose and self.angular_velocity and self.linear_acceleration:
                 rospy.logdebug("RLControllerNode[{}]: t = {}".format(self.state, self.timestamp))
+                #self.agent.save_weights()
+                # print('if 1')
                 cmd, done = self.task.update(self.timestamp, self.pose, self.angular_velocity, self.linear_acceleration)
                 if done:
+                    # print('reset')
                     # If done, reset to begin next episode
                     self.reset()
                 elif cmd is not None:
+                    # print('execute')
                     # Else, execute control action
                     self.cmd_force_pub.publish(cmd)
 

@@ -1,13 +1,14 @@
 import numpy as np
 import os
 import pandas as pd
+import tensorflow as tf
 
 from quad_controller_rl import util
 from quad_controller_rl.agents.base_agent import BaseAgent
 from quad_controller_rl.agents.utils import ReplayBuffer, OUNoise
 
-from keras import layers, models, optimizers
-from keras import backend as K
+from tensorflow.keras import layers, models, optimizers
+from tensorflow.keras import backend as K
 
 
 # Create DDPG Actor    
@@ -146,7 +147,7 @@ class DDPG2(BaseAgent):
         # Replay memory
         self.buffer_size = 100000
         self.batch_size = 64
-        self.memory = ReplayBuffer(self.buffer_size)
+        self.memory = ReplayBuffer(size=self.buffer_size)
         
         # Algorithm Parameters
         self.gamma = 0.99  # discount
@@ -247,6 +248,10 @@ class DDPG2(BaseAgent):
         complete_action = np.zeros(self.task.action_space.shape)
         complete_action[0:action_size] = action
         return complete_action
+
+    def save_weights(self):
+        self.actor_target.model.save_weights('actor2.h5')
+        self.critic_target.model.save_weights('critic2.h5')
     
 
     

@@ -1,6 +1,8 @@
 import numpy as np
 import random
+import copy
 from collections import namedtuple
+
 
 # Create replay buffer
 Experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
@@ -20,7 +22,7 @@ class ReplayBuffer:
         if len(self.memory) < self.size:
             self.memory.append(e)
         else:
-            self.memory[idx] = e
+            self.memory[self.idx] = e
             self.idx = (self.idx +1) % self.size
             
     def sample(self, batch_size=64):
@@ -36,18 +38,18 @@ class ReplayBuffer:
 class OUNoise:
     """Ornstein-Uhlenbeck Noise Process"""
     
-    def __init__(self, size, mu=None, theta=0.15, sigma=0.3):
+    def __init__(self, size, mu=0, theta=0.15, sigma=0.2):
         """Initialize parameters and noise"""
         self.size = size
-        self.mu = mu if mu is not None else np.zeros(self.size)
+        self.mu = mu * np.ones(size) # mu if mu is not None else np.zeros(self.size)
         self.theta = theta
         self.sigma = sigma
-        self.state = np.ones(self.size) * self.mu
+        # self.state = np.ones(self.size) * self.mu
         self.reset()
     
     def reset(self):
         """Reset internal state to mean"""
-        self.state = self.mu
+        self.state = copy.copy(self.mu)
         
     def sample(self):
         """Update internal state and return it as a noise sample"""
